@@ -163,15 +163,15 @@ class TGrep2(object):
         """
         r = []
         cmd = "tgrep2"
-        flagsToRun = ("-" + "".join([flag, self.flags])
-                      for flag in flags)
         for q in queries:
             queryR = []
-            for flagz in flagsToRun:
-                p = Popen([cmd, flagz, self.corpus, "-"],
+            for flag in flags:
+                flagsToRun = "-" + "".join([flag, self.flags])
+                p = Popen([cmd, flagsToRun, self.corpus, "-"],
                           stdout=PIPE, stdin=PIPE, stderr=STDOUT)
-                queryR.append(p.communicate(input=q))
-            r.append([x[0].strip() for x in queryR])
+                out = p.communicate(input=q)
+                queryR.append(out[0])
+            r.append(queryR)
         return r
 
     def _to_df(self, r, n_fields, col_names=None):
@@ -193,9 +193,9 @@ class TGrep2(object):
         """
         df = pd.DataFrame()
         for queryIndex, queryR in enumerate(r):
-            d = self._query_result_to_df(queryR, n_fields, queryIndex, col_names)
-            #return d
-            df = df.append(d) # Make this pandas-independent?
+            d = self._query_result_to_df(queryR, n_fields, 
+                                         queryIndex, col_names)
+            df = df.append(d, ignore_index=True) 
         return df
 
     @staticmethod
@@ -213,7 +213,6 @@ class TGrep2(object):
             col_names = range(len(df)) # numerical col names
         df = dict(zip(col_names, df)) 
         df[QUERY_INDEX_NAME] = [q_index]  * numLines
-        #return df
 
         # Convert to pandas.
         return pd.DataFrame(df)

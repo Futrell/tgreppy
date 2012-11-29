@@ -5,10 +5,12 @@ query with multiple points to print and organizes the
 output into a dataframe.
 """
 import os
-import functools
 from subprocess import Popen, PIPE, STDOUT
+import functools
+from collections import OrderedDict
 import pandas as pd
 
+TGREP_CMD = "tgrep2"
 DEFAULT_MATCH_FLAGS = "afi"
 DEFAULT_OUTPUT_FLAGS = "t u".split()
 
@@ -43,16 +45,15 @@ class TGrep2Queries(object):
         else:
             self.macros = macros
         if q:
-            self.n_fields = self._print_how_many(self.q[0])
+            self.n_fields = self._how_many_to_print(self.q)
         else:
-            self.n_fields = 0
+            self.n_fields = [0]
 
     @staticmethod
-    def _print_how_many(query):
-        count = query.count(PRINT_MARKER)
-        if not count:
-            return 1
-        return count
+    def _how_many_to_print(queries):
+        counts = [max(1, q.count(PRINT_MARKER))
+                  for q in queries]
+        return counts
 
     def read_from_file(self, filename):
         infile = open(filename)
@@ -65,7 +66,7 @@ class TGrep2Queries(object):
                 else:
                     self.q.append(line)
         infile.close()
-        self.n_fields = self._print_how_many(self.q[0]) 
+        self.n_fields = self._how_many_to_print(self.q) 
 
     @staticmethod
     def _remove_comments(line):
@@ -81,9 +82,6 @@ class TGrep2Queries(object):
 
     def __iter__(self):
         return (self._append_macros(x) for x in self.q)
-
-    def __len__(self):
-        return self.n_fields
 
     def _append_macros(self, query):
         macroString = "\n".join(self.macros)
@@ -145,7 +143,7 @@ class TGrep2(object):
         """
         
         r = self._run_queries(queries, flags)        
-        return self._to_df(r, len(queries)) 
+        return self._to_df(r, queries.n_fields) 
 
     def _run_queries(self, queries, flags=DEFAULT_OUTPUT_FLAGS):
         """ Run queries.
@@ -154,24 +152,23 @@ class TGrep2(object):
         the output. Iterate through the queries and
         through the flags specified.
 
-        Return a list of lists of results from different
+        Return a dict of ordereddicts of results from different
         flag configurations. For instance the results
         are structured like [query-1 [flag-1 flag-2]
         query-2 [flag-1 flag-2]]. The 
         results can then be appended together 
         in a dataframe using to_db. 
         """
-        r = []
-        cmd = "tgrep2"
+        r = OrderedDict()
         for q in queries:
-            queryR = []
+            queryR = OrderedDict()
             for flag in flags:
                 flagsToRun = "-" + "".join([flag, self.flags])
-                p = Popen([cmd, flagsToRun, self.corpus, "-"],
+                p = Popen([TGREP_CMD, flagsToRun, self.corpus, "-"],
                           stdout=PIPE, stdin=PIPE, stderr=STDOUT)
                 out = p.communicate(input=q)
-                queryR.append(out[0])
-            r.append(queryR)
+                queryR[flag] = out[0]
+            r[q] = queryR
         return r
 
     def _to_df(self, r, n_fields, col_names=None):
@@ -193,19 +190,44 @@ class TGrep2(object):
         """
         df = pd.DataFrame()
         for queryIndex, queryR in enumerate(r):
-            d = self._query_result_to_df(queryR, n_fields, 
+            d = self._query_result_to_df(r[queryR], n_fields, 
                                          queryIndex, col_names)
-            df = df.append(d, ignore_index=True) 
+            if d is not None:
+                df = df.append(d, ignore_index=True) 
         return df
 
     @staticmethod
     def _query_result_to_df(r, n_fields, q_index, col_names=None):
-        numFlags = len(r) # r is a list of strings
-        df = [list() for _ in range(numFlags * n_fields)]
+
+        # Prepare a list of lists to contain columns.
+        numFlags = len(r) # r is a dict of strings
+        maxNumFields = max(n_fields)
+        df = [list() for _ in range(numFlags * maxNumFields)]
+
+        # Add results for certain flags and fields to the right
+        # columns.
         for flagIndex, flagR in enumerate(r): # strings
-            for j, line in enumerate(flagR.split("\n")):
-                colIndex = (flagIndex * n_fields) + (j % n_fields)
-                df[colIndex].append(line)
+            allLines = r[flagR].strip().split("\n")
+            lines = iter(allLines)
+            try:
+                line = lines.next()
+            except StopIteration:
+                return None
+            if not line and len(allLines) == 1:
+                return None
+            i = 0
+            while True:
+                offset = flagIndex * maxNumFields
+                period = i % n_fields[q_index]
+                if period == n_fields[q_index] - 1:
+                    for j in range(maxNumFields - n_fields[q_index]):
+                        df[offset + period + j + 1].append(None)
+                df[offset + period].append(line)
+                try:
+                    line = lines.next()
+                except StopIteration:
+                    break
+                i = i+1
         numLines = len(df[0])
         
         # Assign column names.

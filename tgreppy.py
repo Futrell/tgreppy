@@ -10,10 +10,15 @@ import functools
 from collections import OrderedDict
 import pandas as pd
 
-TGREP_CMD = "tgrep2"
+# Default tgrep2 flags.
 DEFAULT_MATCH_FLAGS = "afi"
 DEFAULT_OUTPUT_FLAGS = "t u wt".split()
 
+# Constants to interface with tgrep2.
+TGREP_CMD = "tgrep2"
+CORPUS_ENV_VARIABLE = "TGREP2_CORPUS"
+
+# Constants for reading query file.
 START_MACRO = "@"
 END_MACRO = ";"
 MACRO_DELIM = "\t"
@@ -21,6 +26,7 @@ SUB_DELIM = " "
 PRINT_MARKER = "`"
 COMMENT_MARKER = "#"
 
+# Column name defaults.
 QUERY_INDEX_NAME = "query_index"
 
 class TGrep2Queries(object):
@@ -263,12 +269,12 @@ def main(corpus_filename, query_filename,
     d = t.query_from_file(query_filename, flags=outflags)
     d.to_csv(sys.stdout, header=False, index=False)
 
-
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Generate a csv from tgrep2 queries")
-    parser.add_argument("corpus", help="tgrep2 corpus filename", type=str)
     parser.add_argument("queries", help="tgrep2 queries filename")
+    parser.add_argument("corpus", help="tgrep2 corpus filename", type=str,
+                        default=os.getenv("CORPUS_ENV_VARIABLE"))
     parser.add_argument("--match", help="Match-control flags, default afi",
                         default=DEFAULT_MATCH_FLAGS, dest="match", type=str)
     parser.add_argument("--outflags", help="Output format control flags",

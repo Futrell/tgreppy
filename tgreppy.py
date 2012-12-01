@@ -4,7 +4,7 @@ python wrapper for tgrep2. For now, it just takes a
 query with multiple points to print and organizes the 
 output into a dataframe.
 """
-import os
+import os, sys
 from subprocess import Popen, PIPE, STDOUT
 import functools
 from collections import OrderedDict
@@ -12,7 +12,7 @@ import pandas as pd
 
 TGREP_CMD = "tgrep2"
 DEFAULT_MATCH_FLAGS = "afi"
-DEFAULT_OUTPUT_FLAGS = "t u".split()
+DEFAULT_OUTPUT_FLAGS = "t u wt".split()
 
 START_MACRO = "@"
 END_MACRO = ";"
@@ -174,7 +174,7 @@ class TGrep2(object):
     def _to_df(self, r, n_fields, col_names=None):
         """ Convert tgrep2 output to a data frame.
 
-        This method takes tgrep2 output--a list of lists of
+        This method takes tgrep2 output--a dict of dicts of
         strings sent to stdout by tgrep2 after running it
         possibly multiple times--and converts it to a
         pandas dataframe. The method has to know how many
@@ -202,12 +202,13 @@ class TGrep2(object):
         # Prepare a list of lists to contain columns.
         numFlags = len(r) # r is a dict of strings
         maxNumFields = max(n_fields)
-        df = [list() for _ in range(numFlags * maxNumFields)]
+        df = []
 
         # Add results for certain flags and fields to the right
         # columns.
-        for flagIndex, flagR in enumerate(r): # strings
-            allLines = r[flagR].strip().split("\n")
+        for flagIndex, flag in enumerate(r): # strings
+
+            allLines = r[flag].strip().split("\n")
             lines = iter(allLines)
             try:
                 line = lines.next()
@@ -215,12 +216,22 @@ class TGrep2(object):
                 return None
             if not line and len(allLines) == 1:
                 return None
+            actualNFields = n_fields[q_index]
+            if "w" in flag:
+                actualNFields = 1
+                df.append(list())
+            else:
+                df.extend([list() for _ in range(maxNumFields)])
+
             i = 0
             while True:
                 offset = flagIndex * maxNumFields
-                period = i % n_fields[q_index]
-                if period == n_fields[q_index] - 1:
-                    for j in range(maxNumFields - n_fields[q_index]):
+                period = i % actualNFields
+                
+                # Add placeholders in case of ragged results
+                if (period == actualNFields - 1
+                    and "w" not in flag):
+                    for j in range(maxNumFields - actualNFields):
                         df[offset + period + j + 1].append(None)
                 df[offset + period].append(line)
                 try:
@@ -238,3 +249,31 @@ class TGrep2(object):
 
         # Convert to pandas.
         return pd.DataFrame(df)
+
+
+def main(corpus_filename, query_filename, 
+         matchflags=None, outflags=None):
+    if not matchflags:
+        matchflags = DEFAULT_MATCH_FLAGS
+    if not outflags:
+        outflags = DEFAULT_OUTPUT_FLAGS
+    else:
+        outflags = list(outflags)
+    t = TGrep2(corpus_filename, flags=matchflags)
+    d = t.query_from_file(query_filename, flags=outflags)
+    d.to_csv(sys.stdout, header=False, index=False)
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Generate a csv from tgrep2 queries")
+    parser.add_argument("corpus", help="tgrep2 corpus filename", type=str)
+    parser.add_argument("queries", help="tgrep2 queries filename")
+    parser.add_argument("--match", help="Match-control flags, default afi",
+                        default=DEFAULT_MATCH_FLAGS, dest="match", type=str)
+    parser.add_argument("--outflags", help="Output format control flags",
+                        default=DEFAULT_OUTPUT_FLAGS, dest="outflags", type=str)
+    args = parser.parse_args()
+
+    main(args.corpus, args.queries, 
+         matchflags=args.match, outflags=args.outflags)

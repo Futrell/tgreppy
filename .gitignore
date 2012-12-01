@@ -1,3 +1,5 @@
 query.txt
+queries.txt
 *.pyc
 *~
+*.csv

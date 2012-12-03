@@ -7,12 +7,12 @@ output into a dataframe.
 import os, sys
 from subprocess import Popen, PIPE, STDOUT
 import functools
-from collections import OrderedDict
+from collections import OrderedDict, Counter
 import pandas as pd
 
 # Default tgrep2 flags.
 DEFAULT_MATCH_FLAGS = "afi"
-DEFAULT_OUTPUT_FLAGS = "t u wt".split()
+DEFAULT_OUTPUT_FLAGS = ["", "t", "u", "wt"]
 
 # Constants to interface with tgrep2.
 TGREP_CMD = "tgrep2"
@@ -267,6 +267,8 @@ def main(corpus_filename, query_filename,
         outflags = list(outflags)
     t = TGrep2(corpus_filename, flags=matchflags)
     d = t.query_from_file(query_filename, flags=outflags)
+    if all(d[QUERY_INDEX_NAME] == 0):
+        del d[QUERY_INDEX_NAME]
     d.to_csv(sys.stdout, header=False, index=False)
 
 if __name__ == "__main__":

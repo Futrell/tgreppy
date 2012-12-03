@@ -1,5 +1,5 @@
-query.txt
-queries.txt
+*query.txt
+*queries.txt
 *.pyc
 *~
 *.csv
